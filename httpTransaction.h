@@ -1,6 +1,18 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+/* 
+ * File:   httpTransaction.h
+ * Author: HOU
+ *
+ * Created on 2016年10月13日, 下午10:55
+ */
+
 #ifndef HTTPTRANSACTION_H
 #define HTTPTRANSACTION_H
-
 #include <map>
 #include <vector>
 #include <string>
@@ -15,10 +27,10 @@ private:
 	std::string httpVersion;
 
 public:
-
-	void setHeaders(HeaderMap &headers);
-	HeaderMap getHeaders();
-
+    HttpTransaction();
+    void setHeaders(std::string& key, std::string& value);
+    std::string getHeaders();
+    std::string getHeader(std::string& key);
     void setHttpVersion(std::string &);
     std::string getHttpVersion();
 };
@@ -26,12 +38,12 @@ public:
 class HttpRequest: public HttpTransaction {
 private:
     std::string method;
-    std::string requestUri;
+    std::string requestUrl;
 public:
     // TODO: build a constructor that takes vector/array of bytes as input
 
     void setRequestUri(std::string &);
-    std::string getRequestUri();
+    std::string getRequestUrl();
 
     void setMethod(std::string &);
     std::string getMethod();
@@ -45,6 +57,7 @@ public:
 class HttpResponse: public HttpTransaction {
 private:
     int status;
+    std::string statusDef;
 public:
     // TODO: build a constructor that takes vector/array of bytes as input
 
@@ -54,10 +67,13 @@ public:
 
     void setStatus(int);
     int getStatus();
-
+    std::string getStatusDefinition();
+    //std::string toResponseString();
     std::vector<uint8_t> encode();
 
     // use std::istream type to represent file in the content
 };
 
-#endif
+
+#endif /* HTTPTRANSACTION_H */
+
