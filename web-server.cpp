@@ -21,7 +21,7 @@
 
 class WebServer {
 private:
-    const static int MAX_BUF_SIZE = 512;
+    const static int MAX_BUF_SIZE = 81920;
     int listener;
 
     // timer on select()
@@ -94,7 +94,7 @@ private:
         sendall(sock, head.c_str(), &len);
 
         int f; // file descriptor
-        char send_buf[1024]; 
+        char send_buf[MAX_BUF_SIZE]; 
         if ( (f = open(fileDir.c_str(), O_RDONLY)) < 0) {
             perror("error");
         } else {
