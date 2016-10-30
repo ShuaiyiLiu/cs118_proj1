@@ -43,81 +43,58 @@ void getUrl(string& url, string& host, string& filepath, string& portnumber){//e
         string http = "http://";
          if (url.compare(0, http.size(), http) == 0) {
             //try to find port or filepath
-            unsigned int pos = url.find_first_of(":", http.length());
+            unsigned int pos = url.find_first_of(':', http.length());
             //no port or filepath
-            if (pos == url.npos) {
-                host = url.substr(http.size());
-                return;
-            }
-            host = url.substr(http.size(), pos - http.size());
             if (pos < url.size() && url[pos] == ':') {
                 // try to find filepath
+                host = url.substr(http.size(), pos - http.size());
                 unsigned int pos2 = url.find_first_of('/', pos);
                 // no filepath
                 if (pos2 == url.npos) {
                     portnumber = url.substr(pos+1);
-                }
-            else
-            {
-                portnumber = url.substr(pos+1, pos2 - pos - 1);
-                filepath = url.substr(pos2);
-            }
-        }
-        // no port in URL
-            else{
-                filepath = url.substr(pos);
-            }
-        }
-//if URL does not contain http://
-        else {
-            unsigned int pos = url.find_first_of(':', 0);
-            if (pos == url.npos) {
-                host = url;
-                return;
-            }
-            host = url.substr(0, pos);
-            if (pos < url.size() && url[pos] == ':') {
-                // A port is provided
-                unsigned int pos2 = url.find_first_of('/', pos);
-                if (pos2 == url.npos) {
-                    portnumber = url.substr(pos + 1);
-                }
-                else
-                {
-                    portnumber = url.substr(pos + 1, pos2 - pos - 1);
+                }else{
+                    portnumber = url.substr(pos+1, pos2 - pos - 1);
                     filepath = url.substr(pos2);
                 }
+            }else{
+                unsigned int pos2 = url.find_first_of('/', http.length());
+                if(pos2 < url.length() && url[pos2] == '/'){
+                    host = url.substr(http.size(), pos2 - http.size());
+                    filepath = url.substr(pos2);
+                    return;
+                }else{
+                    host = url.substr(http.size());
+                    return;
+                }
             }
-            else{
-                filepath = url.substr(pos);
+            
+        }//if URL does not contain http://
+        else {
+            unsigned int pos = url.find_first_of(':', 0);
+            //no port or filepath
+            if (pos < url.size() && url[pos] == ':') {
+                // try to find filepath
+                host = url.substr(0, pos);
+                unsigned int pos2 = url.find_first_of('/', pos);
+                // no filepath
+                if (pos2 == url.npos) {
+                    portnumber = url.substr(pos+1);
+                }else{
+                    portnumber = url.substr(pos+1, pos2 - pos - 1);
+                    filepath = url.substr(pos2);
+                }
+            }else{
+                unsigned int pos2 = url.find_first_of('/', 0);
+                if(pos2 < url.length() && url[pos2] == '/'){
+                    host = url.substr(0, pos2);
+                    filepath = url.substr(pos2);
+                    return;
+                }else{
+                    host = url.substr(0);
+                    return;
+                }
             }
         }
-        /*if(url.compare(0, http.length(), http) == 0){
-            uri = url.substr(http.length());
-            unsigned int pos = uri.find_first_of('/', 0);
-            if(pos == uri.npos){
-                continue;
-            }else{
-                //host = uri.substr(0, pos);
-                unsigned int pos2 = uri.find(':');
-                unsigned int pos3 = uri.find_last_of('/');
-                if()
-                if(pos < uri.length() - 1){
-                    filename = uri.substr(pos + 1);
-                }
-            }
-        }else{
-            uri = url;
-            int pos = uri.find_first_of('/', 0);
-            if(pos == uri.npos){
-                host = uri;
-            }else{
-                host = uri.substr(0, pos);
-                if(pos < uri.length() - 1){
-                    filename = uri.substr(pos + 1);
-                }
-            }
-        }*/
     }
 int main(int argc, char *argv[]){
     if(argc < 2){
@@ -126,7 +103,7 @@ int main(int argc, char *argv[]){
     }
     vector<HttpRequest> request;
     string host, uri, filepath;
-    string portnumber = "3490";
+    string portnumber = "80";
     for(int i = 1; i < argc; i++){
         host = "";
         uri = "";
@@ -135,7 +112,10 @@ int main(int argc, char *argv[]){
         
         string arg = argv[i];
         getUrl(arg, host, filepath, portnumber);
-        uri = host + filepath;
+        uri = filepath;
+        if(portnumber == ""){
+            portnumber = "80";
+        }
         unsigned int pos3 = filepath.find_last_of('/');
         if(pos3 + 1 < filepath.length()){
             filename = filepath.substr(pos3 + 1);
@@ -147,13 +127,17 @@ int main(int argc, char *argv[]){
         temp = "GET";
         eleRequest.setMethod(temp);
         string key = "Host";
-        eleRequest.setHeaders(key, host);
-        request.push_back(eleRequest);
-        
+        string value = host;
+        eleRequest.setHeaders(key, value);
+        /*key = "Connection";
+        value = "close";
+        eleRequest.setHeaders(key, value);
+        request.push_back(eleRequest);*/
+    
         //set up socket and connection
         int status;
         struct addrinfo hints;
-        struct addrinfo *servinfo, *p;  // will point to the results
+        struct addrinfo *servinfo;  // will point to the results
 
         memset(&hints, 0, sizeof hints); // make sure the struct is empty
         hints.ai_family = AF_INET;    //  IPv4
@@ -183,13 +167,13 @@ int main(int argc, char *argv[]){
         
         //send request
         string sendRequest = eleRequest.toRequestString();
-        cout<< sendRequest + "used for debug!" <<endl;
+        cout<< sendRequest <<endl;
         int len = sendRequest.size();
         sendall(sockfd, sendRequest.c_str(), len);
         
         //receive files
         ByteVector headerFile;
-        int numbytes = 0, endOfHead;
+        int numbytes = 0, endOfHead = 0;
         char buf[MAX_BUF_SIZE];
         if ((numbytes = recv(sockfd, buf, MAX_BUF_SIZE - 1, 0)) == -1) {
             perror("recv");
@@ -202,10 +186,7 @@ int main(int argc, char *argv[]){
             }
             headerFile.push_back(buf[j]);
         }
-        if(endOfHead + 1 >= numbytes){
-            cout<<"no file received"<<endl;
-            continue;
-        }
+       
         // construct a HttpResponse
         HttpResponse response;
         response.consume(headerFile);
@@ -233,25 +214,9 @@ int main(int argc, char *argv[]){
             }
         }
         myfile.close();
-        cout << "file received" << endl;
+        cout << "file " + filename+ " received" << endl;
         close(sockfd);
     }
     cout << "all files received" << endl;
     return 0;
 }
-
-    
-/*    void run(){
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in serverAddr;
-        serverAddr.sin_family = AF_INET;
-        serverAddr.sin_port = htons(3490);     // short, network byte order
-        serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-        memset(serverAddr.sin_zero, '\0', sizeof(serverAddr.sin_zero));
-
-  // connect to the server
-        if (connect(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) == -1) {
-        perror("connect");
-        return 2;
-        }
-    }*/
