@@ -16,12 +16,26 @@
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h> // for POSIX function ``stat'' to see if a file exsit
+#include <unordered_map>
 
 #include "httpTransaction.h"
 
+
+// set socket fd to non blocking
+int setNonblocking(int fd) {
+    int flags;
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}     
+
+
 class WebServer {
 private:
-    const static int MAX_BUF_SIZE = 81920;
+    class FileSender;
+    fd_set master;      // master file descriptor list
+
+    const static int MAX_BUF_SIZE = 4096;
     int listener;
 
     // timer on select()
@@ -30,33 +44,56 @@ private:
 
     // file location
     std::string baseDir;
+    std::unordered_map<int, FileSender*> sf_map;
 
     // get and set for listener socket fd
     int getListener() { return listener; }
     void setListener(int i) { listener = i; }
 
-    // file size helper function
-    static std::ifstream::pos_type filesize(const char* filename)
-    {
-        std::ifstream in(filename, std::ifstream::ate | std::ifstream::binary);
-        return in.tellg(); 
-    }
+    // nonblocking file sender class
+    class FileSender {
+    private:
+        int f_fd; // file to send
+        int sock_fd; // socket fd
+        char f_buf[MAX_BUF_SIZE];
+        int f_buf_len; // bytes in buffer
+        int f_buf_used; // bytes used so far <= f_buf_len
+    public:
+        
+        // Non-blocking file sender
+        void sendFile(const char* filename, int s_fd) {
+            setNonblocking(s_fd);
+            std::cout << "SERVER: Start to open file." << std::endl;
 
-    // send all helper function
-    static int sendall(int s, const char *buf, int *len)
-    {
-        int total = 0;        // how many bytes we've sent
-        int bytesleft = *len; // how many we have left to send
-        int n;
-        while(total < *len) {
-            n = send(s, buf+total, bytesleft, 0);
-            if (n == -1) { break; }
-            total += n;
-            bytesleft -= n;
+            if ((f_fd = open(filename, O_RDONLY)) < 0) {
+                perror("file open failed");
+            }
+
+            f_buf_used = 0;
+            f_buf_len = 0;
+            sock_fd = s_fd;
         }
-        *len = total; // return number actually sent here
-        return n==-1?-1:0; // return -1 on failure, 0 on success
-    }
+
+        int handle_io() {
+            if (f_buf_used == f_buf_len) {
+                f_buf_len = read(f_fd, f_buf, MAX_BUF_SIZE);
+                if (f_buf_len < 0) { perror("read"); }
+                else if (f_buf_len == 0) {
+                    close(f_fd);
+                    return 1;
+                }
+                f_buf_used = 0;
+            }
+
+            int nsend = send(sock_fd, f_buf + f_buf_used, f_buf_len - f_buf_used, 0);
+            if (nsend < 0) {
+                perror("send error");
+                close(sock_fd);
+            }
+            f_buf_used += nsend;
+            return 0;
+        }
+    };
 
     // handle difference in ipv6 addresses and ipv4 addresses
     static void *get_in_addr(struct sockaddr *sa) {
@@ -73,8 +110,23 @@ private:
         return str.substr(dot + 1, str.size() - 1 - dot);
     }
 
+    // send all helper function
+    static int sendall(int s, const char *buf, int *len) {
+        int total = 0;        // how many bytes we've sent
+        int bytesleft = *len; // how many we have left to send
+        int n;
+        while(total < *len) {
+            n = send(s, buf+total, bytesleft, 0);
+            if (n == -1) { break; }
+            total += n;
+            bytesleft -= n;
+        }
+        *len = total; // return number actually sent here
+        return n==-1?-1:0; // return -1 on failure, 0 on success
+    }
+
     // send file helper function
-    static void sendFile(int sock, const  std::string &fileDir) {
+    void setFileSender(int sock, const std::string &fileDir) {
         std::string fileSize = std::to_string(filesize(fileDir.c_str()));
         std::string ct;
         std::string pos = endswith(fileDir);
@@ -93,29 +145,16 @@ private:
         int len = strlen(head.c_str());
         sendall(sock, head.c_str(), &len);
 
-        int f; // file descriptor
-        char send_buf[MAX_BUF_SIZE]; 
-        if ( (f = open(fileDir.c_str(), O_RDONLY)) < 0) {
-            perror("error");
-        } else {
-            ssize_t read_bytes;
-            while ( (read_bytes = read(f, send_buf, MAX_BUF_SIZE)) > 0 ) {
-                len = read_bytes;
-                if ( (sendall(sock, send_buf, &len)) == -1 ) {
-                    perror("send error");
-                } else {
-                }
-            }
-            std::cout << "Transfer Over!" << std::endl; 
-            close(f);
-        }
+        FileSender *fs = new FileSender;
+        fs->sendFile(fileDir.c_str(), sock);
+        sf_map[sock] = fs;
     }
 
-    static void send404() {
+    static void send404(int sock) {
         // TODO
     }
 
-    static void send400() {
+    static void send400(int sock) {
     
     }
 
@@ -212,42 +251,50 @@ public:
     }
     
     void run() {
-        fd_set master;      // master file descriptor list
         fd_set read_fds;    // temp file descriptor list for select()
+        fd_set write_fds;
         int fdmax;          // maximum file descriptor number
-
         int newfd;          // newly accept()ed socket descriptor
-
         struct sockaddr_storage remoteaddr; // client address
         socklen_t addrlen;
-
         char buf[MAX_BUF_SIZE];      // TODO: Remove this magic literal
         int nbytes;
-
         char remoteIP[INET6_ADDRSTRLEN];
 
         FD_ZERO(&master);       // clear the master and temp sets
         FD_ZERO(&read_fds);
-
-
+        FD_ZERO(&write_fds);
         FD_SET(listener, &master);
+
+        struct timeval tv;
         // keep track of the largest file descriptor
         fdmax = listener;
+        int nReadyFds = 0;
         while (true) {
             read_fds = master;
-            if (select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1) {
+            tv.tv_sec = sec;
+            tv.tv_usec = usec;
+            if ((nReadyFds = select(fdmax + 1, &read_fds, &write_fds, NULL, &tv)) == -1) {
                 perror("select");
-                exit(4);
+            } else if (nReadyFds == 0) {
+                std::cout << "SERVER: No data received for " << sec << " seconds!" << std::endl; 
+                continue;
             }
 
             // run through the exisiting connections looking for data to read
             for (int i = 0; i <= fdmax; i++) {
+                if (FD_ISSET(i, &write_fds)) {
+                    int sig = sf_map[i]->handle_io();
+                    if (sig == 1) { // all set
+                        std::cout << "SERVER: File has been sent." << std::endl;
+                        FD_CLR(i, &write_fds);
+                    }
+                }
                 if (FD_ISSET(i, &read_fds)) { // we got one
                     if (i == listener) {
                         // handle new connections
                         addrlen = sizeof(remoteaddr);
                         newfd = accept(listener, (struct sockaddr *)&remoteaddr, &addrlen);
-
                         if (newfd == -1) {
                             perror("accept");
                         } else {
@@ -255,71 +302,57 @@ public:
                             if (newfd > fdmax) {    // keep track of the max
                                 fdmax = newfd;
                             }
-                            printf("selectserver: new connection from %s on "
-                                    "socket %d\n",
-                                    inet_ntop(remoteaddr.ss_family,
-                                        get_in_addr((struct sockaddr*)&remoteaddr),
-                                        remoteIP, INET6_ADDRSTRLEN),
-                                    newfd);
+                            printf("selectserver: socket %d\n", newfd);
                         }
                     } else {
                         // handle data from a client 
                         if ((nbytes = recv(i, buf, sizeof(buf), 0)) <= 0) {
                             if (nbytes == 0) {
-                                // connection closed
+                                // nothing new to receive
                                 printf("selectserver: socket %d hung up\n", i);
                             } else {
                                 perror("recv");
                             }
                             close(i);
                             FD_CLR(i, &master);
+                            FD_CLR(i, &write_fds);
                         } else {
                             // got some goodies from clients
                             // TODO: need decoder to do parsing
                             std::string dir = getDir(buf);
                             std::string fileDir = getBaseDir() + "/" + dir;
-                            std::cout << buf  <<  "\0" << std::endl;
-                            std::cout << dir << std::endl;
-                            std::cout << fileDir << std::endl;
                             
                             // check if file/dir exsit
                             struct stat s;
                             if( (stat(fileDir.c_str(), &s)) == 0 ) {
                                 if( s.st_mode & S_IFDIR ) {
-                                    // it's a dir. check if index.html exsit
-                                    std::cout << "requesting a dir, looking for index.html" << std::endl;
                                     if (fileDir.size() == 0 || fileDir[fileDir.size() - 1] == '/') 
                                         fileDir = fileDir + "index.html";
                                     else fileDir = fileDir + '/' + "index.html";
-                                    std::cout << "sending " + fileDir << std::endl;
-                                    sendFile(i, fileDir);
+                                    setFileSender(i, fileDir);
+                                    FD_SET(i, &write_fds);
                                 } else if( s.st_mode & S_IFREG ) {
-                                    std::cout << "sending " + fileDir << std::endl;
-                                    sendFile(i, fileDir);
+                                    setFileSender(i, fileDir);
+                                    FD_SET(i, &write_fds);
                                 } else {
-                                    // cannot recognize this sh*t, 404
                                     std::cout << "not exsit or cannot recognize, 404" << std::endl;
+                                    send404(i);
                                 }
                             } else {
                                 std::cout << "not exsit, 404" << std::endl;
-                                
+                                send404(i);
                             }
-
                         }
-
                     }
                 }
             }
-
         }
-    
     }
 
 
 };
 
-
-int main() {
+int main(int argc, char* argv[]) {
     WebServer server;
     server.setBaseDir("/vagrant/code");
     server.setSelectTimer(3, 0);
