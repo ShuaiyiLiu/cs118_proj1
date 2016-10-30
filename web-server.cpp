@@ -21,7 +21,7 @@
 #include "httpTransaction.h"
 #include "web-server.h"
 
-#define MAX_LISTENER 10
+#define MAX_LISTENER 20
 
 // set socket fd to non blocking
 int setNonblocking(int fd) {
@@ -76,7 +76,7 @@ void WebServer::setFileSender(int sock, const std::string &fileDir) {
         ct = "octet-stream";
     }
 
-    std::string head = "HTTP/1.1 200 OK\r\n"
+    std::string head = "HTTP/1.0 200 OK\r\n"
         "Accept-Ranges: bytes\r\n"
         "Content-Length: " + fileSize + "\r\n" +
         "Content-Type: " + ct + "\r\n\r\n";
@@ -88,21 +88,7 @@ void WebServer::setFileSender(int sock, const std::string &fileDir) {
     sf_map[sock] = fs;
 }
 
-// get dir function
-std::string WebServer::getDir(const char *chs) {
-    std::string s(chs);
-    std::vector<std::string> splits = split(s, ' ');
-    std::string dir = splits[1];
-    for (unsigned int i = 0; i < dir.size() - 1; ++i) {
-        if (dir[i] == '/' && dir[i + 1] != '/') 
-            if (i == 0 || (i > 0 && dir[i - 1] != '/')) {
-                return dir.substr(i + 1, dir.size() - i - 1); 
-            }
-    }
-    return "";
-}
-
-void WebServer::setUpListnerSocket(const char *addr, const char *port) {
+void WebServer::setUpListnerSocket(const char *addr, const char *por) {
     struct addrinfo hints; // for retrieving addrinfo
 
     // filling hints object
@@ -113,8 +99,9 @@ void WebServer::setUpListnerSocket(const char *addr, const char *port) {
 
     int rv;
     struct addrinfo *ai, *p;
-    if ((rv = getaddrinfo(addr, port, &hints, &ai)) != 0) {
-        fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
+    host = addr; port = por;
+    if ((rv = getaddrinfo(host.c_str(), port.c_str(), &hints, &ai)) != 0) {
+        fprintf(stderr, "SERVER: %s\n", gai_strerror(rv));
         exit(1);
     }
 
@@ -136,7 +123,7 @@ void WebServer::setUpListnerSocket(const char *addr, const char *port) {
 
     // if we got here, it means we didn't get bound
     if (p == NULL) {
-        fprintf(stderr, "selectserver: failed to bind\n");
+        fprintf(stderr, "SERVER: failed to bind\n");
         exit(2);
     }
     freeaddrinfo(ai); // all done with this
@@ -202,7 +189,8 @@ void WebServer::run() {
                         if (newfd > fdmax) {    // keep track of the max
                             fdmax = newfd;
                         }
-                        printf("selectserver: socket %d\n", newfd);
+                        wire[i].clear();
+                        recvStatus[i] = 0;
                         std::cout << "SERVER: New client on socket " << newfd << std::endl;
                     }
                 } else {
@@ -219,10 +207,40 @@ void WebServer::run() {
                         FD_CLR(i, &write_fds);
                     } else {
                         // got some goodies from clients
-                        // TODO: need decoder to do parsing
-                        std::string dir = getDir(buf);
-                        std::string fileDir = getBaseDir() + "/" + dir;
+                        
+                        // check completeness and correctness of messaegs
+                        HttpRequest request;
+                        std::cout << buf << std::endl;
+                        for (int i = 0; i < nbytes; i++) wire[i].push_back(buf[i]);
+                        request.consume(wire[i]);
+                        if (/* incomplete */) {
+                            continue;
+                        } else if (/* bad ones */) {
+                            std::cout << "SERVER: Bad Request!" << std::endl;
+                            send400(i); wire[i].clear();
+                            continue;
+                        }
+                        std::string fileDir = getBaseDir() + request.getRequestUri();
+                        std::cout << "SERVER: Requested file: " << fileDir << std::endl;
+                        wire[i].clear();
 
+                        // check host 
+                        std::string hostKey = "Host";
+                        std::cout << request.getHeader(hostKey);
+                        std::string hostRequest = request.getHeader(hostKey);
+                        std::size_t found = hostRequest.find_first_of(hostRequest, ':');
+                        if (found == std::string::npos) { // not found ':', assume 80 port 
+                            hostRequest += ":80";
+                        }
+                        if (host + ":" + port == hostRequest || 
+                                "http://" + host + ":" + port == hostRequest ||
+                                host + ":" + port == "http://" + hostRequest) {
+                            std::cout << "SERVER: Valid Host " << hostRequest << std::endl; 
+                        } else {
+                            std::cout << "SERVER: Invalid Host " << hostRequest << std::endl; 
+                            send400(i);
+                            continue;
+                        }
                         // check if file/dir exsit
                         struct stat s;
                         if( (stat(fileDir.c_str(), &s)) == 0 ) {
@@ -230,8 +248,13 @@ void WebServer::run() {
                                 if (fileDir.size() == 0 || fileDir[fileDir.size() - 1] == '/') 
                                     fileDir = fileDir + "index.html";
                                 else fileDir = fileDir + '/' + "index.html";
-                                setFileSender(i, fileDir);
-                                FD_SET(i, &write_fds);
+                                if ( (stat(fileDir.c_str(), &s)) == 0 ) {
+                                    setFileSender(i, fileDir);
+                                    FD_SET(i, &write_fds); 
+                                } else {
+                                    std::cout << "not exsit or cannot recognize, 404" << std::endl;
+                                    send404(i);
+                                }
                             } else if( s.st_mode & S_IFREG ) {
                                 setFileSender(i, fileDir);
                                 FD_SET(i, &write_fds);
