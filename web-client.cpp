@@ -16,6 +16,7 @@
 #include "httpTransaction.h"
 using namespace std;
 static int MAX_BUF_SIZE = 1024;
+static int MIN_HEADER_LENGTH = 4;
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -127,7 +128,7 @@ int main(int argc, char *argv[]){
         temp = "GET";
         eleRequest.setMethod(temp);
         string key = "Host";
-        string value = host;
+        string value = host + ":" + portnumber;
         eleRequest.setHeaders(key, value);
         /*key = "Connection";
         value = "close";
@@ -167,7 +168,7 @@ int main(int argc, char *argv[]){
         
         //send request
         string sendRequest = eleRequest.toRequestString();
-        cout<< sendRequest <<endl;
+        cout<< sendRequest<<endl;
         int len = sendRequest.size();
         sendall(sockfd, sendRequest.c_str(), len);
         
@@ -180,17 +181,26 @@ int main(int argc, char *argv[]){
             continue;
         }
         for(int j = 0; j < numbytes; j++){
-            if(j > 4 && buf[j] == '\n' && buf[j - 1] == '\r' && buf[j - 2] == '\n' && buf[j - 3] == '\r'){
+            headerFile.push_back(buf[j]);
+            if(j >= MIN_HEADER_LENGTH && buf[j] == '\n' && buf[j - 1] == '\r' && buf[j - 2] == '\n' && buf[j - 3] == '\r'){
                 endOfHead = j;
                 break;
             }
-            headerFile.push_back(buf[j]);
         }
-       
         // construct a HttpResponse
         HttpResponse response;
         response.consume(headerFile);
-        cout<< response.toResponseString()<<endl;
+        cout<<response.toResponseString()<<endl;
+        if(response.getStatus() == 404){
+            cout<< "Not Found"<<endl;
+            close(sockfd);
+            continue;
+        }
+        if(response.getStatus() == 400){
+            cout<< "Bad Request"<<endl;
+            close(sockfd);
+            continue;
+        }
         //download the file
         temp = "Content-Length";
         int contentLength = atoi(response.getHeader(temp).c_str());

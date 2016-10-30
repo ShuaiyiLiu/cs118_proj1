@@ -1,16 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
-/* 
- * File:   httpTransaction.h
- * Author: HOU
- *
- * Created on 2016年10月13日, 下午10:55
- */
-
 #ifndef HTTPTRANSACTION_H
 #define HTTPTRANSACTION_H
 #include <map>
@@ -55,7 +42,7 @@ public:
 
     std::vector<char> encode();
     bool decodeFirstline(ByteVector&);
-    bool consume(ByteVector&);
+    int consume(ByteVector&);
 };
 
 class HttpResponse: public HttpTransaction {
@@ -75,7 +62,7 @@ public:
     std::string toResponseString();
     std::vector<char> encode();
     bool decodeFirstline(ByteVector&);
-    bool consume(ByteVector&);
+    int consume(ByteVector&);
     // use std::istream type to represent file in the content
 };
 

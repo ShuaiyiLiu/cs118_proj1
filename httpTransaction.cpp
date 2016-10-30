@@ -87,10 +87,10 @@ bool HttpRequest::decodeFirstline(ByteVector& first){
         str = str + first[i];;
     }
     setHttpVersion(str);
-    if(getMethod().compare("GET") != 0){
+    if(getMethod().compare("GET") != 0 || getMethod().compare("POST") != 0 || getMethod().compare("HEAD") != 0){
         return false;
     }
-    if(getHttpVersion().compare("HTTP/1.0") != 0){
+    if(getHttpVersion().compare("HTTP/1.0") != 0 || getHttpVersion().compare("HTTP/1.1") != 0){
         return false;
     }
     return true;
@@ -116,8 +116,8 @@ void HttpTransaction::decodeHeaders(ByteVector& lines){
     string key = "";
     string value = "";
     for(unsigned int i = 0; i < elems.size(); i++){
-        unsigned int pos = elems[i].find(':');
-        if(pos == elems[i].npos){
+        unsigned int pos = elems[i].find_first_of(':');
+        if(pos >= elems[i].length()){
             key == elems[i];
             setHeaders(key, value);
             key = "";
@@ -128,21 +128,21 @@ void HttpTransaction::decodeHeaders(ByteVector& lines){
         if(pos + 2 >= elems[i].length()){
             value = "";
         }else{
-            value = elems[i].substr(pos + 2, elems[i].length() - pos - 2);
+            value = elems[i].substr(pos + 2);
         }
         setHeaders(key, value);
         key = "";
         value = "";
     }
 }
-bool HttpRequest::consume(ByteVector& wire){
+int HttpRequest::consume(ByteVector& wire){
     ByteVector Firstline;
     ByteVector Headerlines;
     unsigned int i = 0;
     int flag = 0;
     while(i < wire.size()){
-        if(i >= 4 && wire[i - 4] == '\r' && wire[i - 3] == '\n' && 
-                wire[i - 2] == '\r' && wire[i - 1] == '\n' && flag == 1){
+        if(i >= 4 && wire[i - 3] == '\r' && wire[i - 2] == '\n' && 
+                wire[i - 1] == '\r' && wire[i] == '\n' && flag == 1){
             flag = 2;
         }else if(i >= 2 && wire[i - 2] == '\r' && wire[i - 1] == '\n' && flag == 0){
             flag = 1;
@@ -156,11 +156,14 @@ bool HttpRequest::consume(ByteVector& wire){
         }
         i++;
     }
+    if(flag != 2){
+        return -2;
+    }
     if(!decodeFirstline(Firstline)){
-        return false;
+        return -1;
     }
     decodeHeaders(Headerlines);
-    return true;
+    return 0;
 }
 void HttpResponse::setStatus(int responsestatus){
     status = responsestatus;
@@ -218,14 +221,14 @@ bool HttpResponse::decodeFirstline(ByteVector& first){
     }
     return true;
 }
-bool HttpResponse::consume(ByteVector& wire){
+int HttpResponse::consume(ByteVector& wire){
     ByteVector Firstline;
     ByteVector Headerlines;
     unsigned int i = 0;
     int flag = 0;
     while(i < wire.size()){
-        if(i >= 4 && wire[i - 4] == '\r' && wire[i - 3] == '\n' && 
-                wire[i - 2] == '\r' && wire[i - 1] == '\n' && flag == 1){
+        if(i >= 4 && wire[i - 3] == '\r' && wire[i - 2] == '\n' && 
+                wire[i - 1] == '\r' && wire[i] == '\n' && flag == 1){
             flag = 2;
         }else if(i >= 2 && wire[i - 2] == '\r' && wire[i - 1] == '\n' && flag == 0){
             flag = 1;
@@ -239,9 +242,12 @@ bool HttpResponse::consume(ByteVector& wire){
         }
         i++;
     }
+    if(flag != 2){
+        return -2;
+    }
     if(!decodeFirstline(Firstline)){
-        return false;
+        return -1;
     }
     decodeHeaders(Headerlines);
-    return true;
+    return 0;
 }
