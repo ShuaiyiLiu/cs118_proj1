@@ -51,11 +51,11 @@ void getUrl(string& url, string& host, string& filepath, string& portnumber){//e
                 host = url.substr(http.size(), pos - http.size());
                 unsigned int pos2 = url.find_first_of('/', pos);
                 // no filepath
-                if (pos2 == url.npos) {
-                    portnumber = url.substr(pos+1);
-                }else{
+                if (pos2 < url.length() && url[pos2] == '/') {
                     portnumber = url.substr(pos+1, pos2 - pos - 1);
                     filepath = url.substr(pos2);
+                }else{
+                    portnumber = url.substr(pos+1);
                 }
             }else{
                 unsigned int pos2 = url.find_first_of('/', http.length());
@@ -78,11 +78,11 @@ void getUrl(string& url, string& host, string& filepath, string& portnumber){//e
                 host = url.substr(0, pos);
                 unsigned int pos2 = url.find_first_of('/', pos);
                 // no filepath
-                if (pos2 == url.npos) {
-                    portnumber = url.substr(pos+1);
-                }else{
+                if (pos2 < url.length() && url[pos2] == '/') {
                     portnumber = url.substr(pos+1, pos2 - pos - 1);
                     filepath = url.substr(pos2);
+                }else{
+                    portnumber = url.substr(pos+1);                
                 }
             }else{
                 unsigned int pos2 = url.find_first_of('/', 0);
@@ -113,6 +113,9 @@ int main(int argc, char *argv[]){
         
         string arg = argv[i];
         getUrl(arg, host, filepath, portnumber);
+        if(filepath == ""){
+            filepath = "/";
+        }
         uri = filepath;
         if(portnumber == ""){
             portnumber = "80";
@@ -122,6 +125,7 @@ int main(int argc, char *argv[]){
             filename = filepath.substr(pos3 + 1);
         }
         HttpRequest eleRequest;
+        
         eleRequest.setRequestUri(filepath);
         string temp = "HTTP/1.0";
         eleRequest.setHttpVersion(temp);
