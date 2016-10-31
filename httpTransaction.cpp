@@ -125,10 +125,14 @@ void HttpTransaction::decodeHeaders(ByteVector& lines){
             continue;
         }
         key = elems[i].substr(0, pos);
-        if(pos + 2 >= elems[i].length()){
+        pos++;
+        while(pos < elems[i].length() && elems[i][pos] == ' '){
+            pos++;
+        }
+        if(pos >= elems[i].length()){
             value = "";
         }else{
-            value = elems[i].substr(pos + 2);
+            value = elems[i].substr(pos);
         }
         setHeaders(key, value);
         key = "";
