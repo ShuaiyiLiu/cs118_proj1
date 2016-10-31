@@ -108,9 +108,9 @@ private:
     static void send404(int sock) {
         std::string str404 = "HTTP/1.0 404 Not Found\r\n"
                              "Content-Type: text/html\r\n"
-                             "Content-Length: 9\r\n"
+                             "Content-Length: 11\r\n"
                              "\r\n"         
-                             "Not Found";
+                             "Not Found\r\n";
         int len = str404.length();
         sendall(sock, str404.c_str(), &len);
     }
@@ -118,9 +118,9 @@ private:
     static void send400(int sock) {
         std::string str400 = "HTTP/1.0 400 Bad Request\r\n"
                              "Content-Type: text/html\r\n"
-                             "Content-Length: 11\r\n"
+                             "Content-Length: 13\r\n"
                              "\r\n"         
-                             "Bad Request";
+                             "Bad Request\r\n";
         int len = str400.length();
         sendall(sock, str400.c_str(), &len);
     }

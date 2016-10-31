@@ -190,6 +190,7 @@ void WebServer::run() {
                             fdmax = newfd;
                         }
                         wire[i].clear();
+                        std::cout << "1" << std::endl;
                         recvStatus[i] = 0;
                         std::cout << "SERVER: New client on socket " << newfd << std::endl;
                     }
@@ -211,24 +212,30 @@ void WebServer::run() {
                         // check completeness and correctness of messaegs
                         HttpRequest request;
                         std::cout << buf << std::endl;
-                        for (int i = 0; i < nbytes; i++) wire[i].push_back(buf[i]);
-                        request.consume(wire[i]);
-                        if (/* incomplete */) {
+                        for (int j = 0; j < nbytes; j++) wire[i].push_back(buf[j]);
+                        for (unsigned int j = 0; j < wire[i].size(); j++) std::cout << wire[i][j];
+                        std::cout << std::endl;
+
+
+                        int flag = request.consume(wire[i]);
+                        if (flag == -2) {
+                            std::cout << "SERVER: Incomplete request." << std::endl;
                             continue;
-                        } else if (/* bad ones */) {
+                        } else if (flag == -1) {
                             std::cout << "SERVER: Bad Request!" << std::endl;
                             send400(i); wire[i].clear();
                             continue;
                         }
+
                         std::string fileDir = getBaseDir() + request.getRequestUri();
                         std::cout << "SERVER: Requested file: " << fileDir << std::endl;
                         wire[i].clear();
 
                         // check host 
                         std::string hostKey = "Host";
-                        std::cout << request.getHeader(hostKey);
+                        std::cout << request.getHeader(hostKey) << std::endl;
                         std::string hostRequest = request.getHeader(hostKey);
-                        std::size_t found = hostRequest.find_first_of(hostRequest, ':');
+                        std::size_t found = hostRequest.find(":");
                         if (found == std::string::npos) { // not found ':', assume 80 port 
                             hostRequest += ":80";
                         }
