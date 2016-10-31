@@ -87,10 +87,10 @@ bool HttpRequest::decodeFirstline(ByteVector& first){
         str = str + first[i];;
     }
     setHttpVersion(str);
-    if(getMethod().compare("GET") != 0 || getMethod().compare("POST") != 0 || getMethod().compare("HEAD") != 0){
+    if(getMethod().compare("GET") != 0 && getMethod().compare("POST") != 0 && getMethod().compare("HEAD") != 0){
         return false;
     }
-    if(getHttpVersion().compare("HTTP/1.0") != 0 || getHttpVersion().compare("HTTP/1.1") != 0){
+    if(getHttpVersion().compare("HTTP/1.0") != 0 && getHttpVersion().compare("HTTP/1.1") != 0){
         return false;
     }
     return true;
