@@ -190,7 +190,6 @@ void WebServer::run() {
                             fdmax = newfd;
                         }
                         wire[i].clear();
-                        std::cout << "1" << std::endl;
                         recvStatus[i] = 0;
                         std::cout << "SERVER: New client on socket " << newfd << std::endl;
                     }
@@ -227,7 +226,15 @@ void WebServer::run() {
                             continue;
                         }
 
-                        std::string fileDir = getBaseDir() + request.getRequestUri();
+                        std::string baseDir = getBaseDir();
+                        int sb;
+                        if ((sb = baseDir.size()) > 0 && baseDir[sb - 1] == '/' &&
+                                request.getRequestUri().size() > 0 &&
+                                request.getRequestUri()[0] == '/') {
+                            baseDir.pop_back(); 
+                        }
+                                
+                        std::string fileDir = baseDir + request.getRequestUri();
                         std::cout << "SERVER: Requested file: " << fileDir << std::endl;
                         wire[i].clear();
 

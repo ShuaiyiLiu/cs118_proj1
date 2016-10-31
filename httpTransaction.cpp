@@ -156,11 +156,11 @@ int HttpRequest::consume(ByteVector& wire){
         }
         i++;
     }
-    if(flag != 2){
-        return -2;
-    }
     if(!decodeFirstline(Firstline)){
         return -1;
+    }
+    if(flag != 2){
+        return -2;
     }
     decodeHeaders(Headerlines);
     return 0;
