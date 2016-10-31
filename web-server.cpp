@@ -195,6 +195,7 @@ void WebServer::run() {
                     }
                 } else {
                     // handle data from a client 
+                    if (i == 6) std::cout << 6 << std::endl;
                     if ((nbytes = recv(i, buf, sizeof(buf), 0)) <= 0) {
                         if (nbytes == 0) {
                             // nothing new to receive
@@ -204,13 +205,11 @@ void WebServer::run() {
                         }
                         close(i);
                         FD_CLR(i, &master);
-                        FD_CLR(i, &write_fds);
                     } else {
                         // got some goodies from clients
                         
                         // check completeness and correctness of messaegs
                         HttpRequest request;
-                        std::cout << buf << std::endl;
                         for (int j = 0; j < nbytes; j++) wire[i].push_back(buf[j]);
                         for (unsigned int j = 0; j < wire[i].size(); j++) std::cout << wire[i][j];
                         std::cout << std::endl;
@@ -223,6 +222,8 @@ void WebServer::run() {
                         } else if (flag == -1) {
                             std::cout << "SERVER: Bad Request!" << std::endl;
                             send400(i); wire[i].clear();
+                            close(i);
+                            FD_CLR(i, &master);
                             continue;
                         }
 
@@ -253,6 +254,8 @@ void WebServer::run() {
                         } else {
                             std::cout << "SERVER: Invalid Host " << hostRequest << std::endl; 
                             send400(i);
+                            close(i);
+                            FD_CLR(i, &master);
                             continue;
                         }
                         // check if file/dir exsit
@@ -268,6 +271,8 @@ void WebServer::run() {
                                 } else {
                                     std::cout << "not exsit or cannot recognize, 404" << std::endl;
                                     send404(i);
+                                    close(i);
+                                    FD_CLR(i, &master);
                                 }
                             } else if( s.st_mode & S_IFREG ) {
                                 setFileSender(i, fileDir);
@@ -275,10 +280,14 @@ void WebServer::run() {
                             } else {
                                 std::cout << "not exsit or cannot recognize, 404" << std::endl;
                                 send404(i);
+                                close(i);
+                                FD_CLR(i, &master);
                             }
                         } else {
                             std::cout << "not exsit, 404" << std::endl;
                             send404(i);
+                            close(i);
+                            FD_CLR(i, &master);
                         }
                     }
                 }

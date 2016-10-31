@@ -1,5 +1,7 @@
 CPPFLAGS = -g -std=c++1y -MD -MP
 
+all: web-server web-client
+
 web-server: httpTransaction.o web-server.o
 	g++ $(CPPFLAGS) -o $@ $^
 	

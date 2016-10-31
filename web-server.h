@@ -34,7 +34,7 @@ private:
     bool recvStatus[MAX_LISTENER]; // 0 receiving 1 complete
     
 
-    const static int MAX_BUF_SIZE = 4096;
+    const static int MAX_BUF_SIZE = 1024;
     int listener;
     std::string host;
     std::string port;
